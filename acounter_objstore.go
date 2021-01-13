@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -40,9 +41,12 @@ var (
 	pfClient        *sxutil.SXServiceClient = nil
 	stClient        *sxutil.SXServiceClient = nil
 	acblocks        map[string]*ACBlock     = map[string]*ACBlock{}
-	bucketName                              = flag.String("bucket", "acounter", "Bucket Name")
+	iacblocks       map[string]*IACBlock    = map[string]*IACBlock{}
+	bucketName                              = flag.String("bucket", "centrair", "Bucket Name")
 	holdPeriod                              = flag.Int64("holdPeriod", 30, "ACounter Data Hold Time")
 )
+
+const layout = "2006-01-02T15:04:05.999999Z"
 
 func init() {
 }
@@ -88,6 +92,17 @@ func saveRecursive(client *sxutil.SXServiceClient) {
 				}
 			}
 		}
+		for name, iacblock := range iacblocks {
+			if iacblock.BaseDate+*holdPeriod < currentTime {
+				aclines := []string{}
+				for _, ac := range iacblock.ACounter {
+					st, _ := time.Parse(layout, ptypes.TimestampString(ac.Ts))
+					aclines = append(aclines, fmt.Sprintf("%s,%d,%s,%d", st.Format(layout), ac.AreaId, ac.AreaName, ac.Count))
+				}
+				objStore(*bucketName, name, strings.Join(aclines, "\n")+"\n")
+				delete(iacblocks, name)
+			}
+		}
 	}
 }
 
@@ -99,13 +114,14 @@ func supplyACounterCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 	err := proto.Unmarshal(sp.Cdata.Entity, pc)
 	if err == nil { // get ACounter
 		tsd, _ := ptypes.Timestamp(pc.Ts)
+		tsd = tsd.Add(9 * time.Hour)
 		log.Printf("%v", pc)
 
 		// how to define Bucket:
 
 		// we use IP address for sensor_id
 		//		objectName := "year/month/date/hour/min"
-		objectName := fmt.Sprintf("%4d/%02d/%02d/%02d/%02d", tsd.Year(), tsd.Month(), tsd.Day(), tsd.Hour(), tsd.Minute())
+		objectName := fmt.Sprintf("ACOUNTER/ACOUNTER/%4d/%02d/%02d/%02d/%02d", tsd.Year(), tsd.Month(), tsd.Day(), tsd.Hour(), tsd.Minute())
 
 		if acblock, exists := acblocks[objectName]; exists {
 			acblock.ACounters = append(acblock.ACounters, pc)
@@ -113,6 +129,19 @@ func supplyACounterCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 			acblocks[objectName] = &ACBlock{
 				BaseDate:  tsd.Unix(),
 				ACounters: []*pcounter.ACounters{pc},
+			}
+		}
+
+		for _, ac := range pc.Acs {
+			objectName := fmt.Sprintf("AREA/%s/%4d/%02d/%02d/%02d/%02d", ac.AreaName, tsd.Year(), tsd.Month(), tsd.Day(), tsd.Hour(), tsd.Minute())
+
+			if iacblock, exists := iacblocks[objectName]; exists {
+				iacblock.ACounter = append(iacblock.ACounter, ac)
+			} else {
+				iacblocks[objectName] = &IACBlock{
+					BaseDate: tsd.Unix(),
+					ACounter: []*pcounter.ACounter{ac},
+				}
 			}
 		}
 	}

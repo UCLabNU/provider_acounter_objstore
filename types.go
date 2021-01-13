@@ -10,3 +10,10 @@ type ACBlock struct {
 	PrevLen   uint32
 	ACounters []*pcounter.ACounters
 }
+
+// IACBlock : type definition of IACBlock
+type IACBlock struct {
+	BaseDate int64
+	PrevLen  uint32
+	ACounter []*pcounter.ACounter
+}
