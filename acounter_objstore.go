@@ -97,7 +97,7 @@ func saveRecursive(client *sxutil.SXServiceClient) {
 				aclines := []string{}
 				for _, ac := range iacblock.ACounter {
 					st, _ := time.Parse(layout, ptypes.TimestampString(ac.Ts))
-					aclines = append(aclines, fmt.Sprintf("%s,%d,%s,%d", st.Format(layout), ac.AreaId, ac.AreaName, ac.Count))
+					aclines = append(aclines, fmt.Sprintf("%s,%d,%s,%d", st.Add(9*time.Hour).Format(layout), ac.AreaId, ac.AreaName, ac.Count))
 				}
 				objStore(*bucketName, name, strings.Join(aclines, "\n")+"\n")
 				delete(iacblocks, name)
